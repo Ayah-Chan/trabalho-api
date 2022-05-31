@@ -2,12 +2,15 @@ import { Component, Fragment, React, createRef } from "react";
 import EnderecoApi from "../Services/EnderecoApi"; 
 import CadastroApi from "../Services/CadastroApi";
 import ModalAlert from "../Components/ModalAlert";
+import ModalConfirm from "../Components/ModalConfirm";
 
 class Cadastro extends Component {
 
     constructor(props) {
         super(props);
         this.modalRef = createRef();
+        this.modalConfirmRef = createRef();
+        
         this.state = {
             listaEstados: [],
                 
@@ -24,6 +27,7 @@ class Cadastro extends Component {
                 uf: "",
                 cidade: "",
                 expectativa: "",
+                id: ""
             },
 
             erros: {
@@ -39,6 +43,7 @@ class Cadastro extends Component {
                 uf: [],
                 cidade: [],
                 expectativa: [],
+                id: []
             }
         }
     }
@@ -64,9 +69,52 @@ class Cadastro extends Component {
         }
     };
 
+    buscaCpf = event => {
+        this.escutadorDeInputFormCadastro(event);
+
+        const { value } = event.target;
+
+        if (value.length > 10) {
+            CadastroApi.getCadastro(value).then( resp => {
+                this.mostrarConfirm("Cadastro já encontrado", this, resp);
+            }).catch( (e) =>{
+                console.log(e);
+            });
+        }
+    };
+
     mostrarModal = (title, body) => {
         this.modalRef.current.handleShow({show: true, title, body});
     };
+
+    mostrarConfirm = (title, body, helper) => {
+        this.modalConfirmRef.current.handleShow({show: true, title, body, helper});
+    };
+
+    retornoModal = (status, resp) => {
+        if (status === "excluir") {
+            this.apagarCadastro(resp.data.cpf);
+        } else {
+            this.setState({
+                formCadastro: {...this.state.formCadastro,...{
+                    id: resp.data.id,
+                    nomeCompleto: resp.data.nomeCompleto,
+                    dataNascimento: resp.data.dataNascimento,
+                    sexo: resp.data.sexo,
+                    cep: resp.data.cep,
+                    cpf: resp.data.cpf,
+                    uf: resp.data.uf,
+                    cidade: resp.data.cidade,
+                    logradouro: resp.data.logradouro,
+                    numeroLogradouro: resp.data.numeroLogradouro,
+                    email: resp.data.email
+                }}
+            });
+
+            this.mostrarModal("Atualização", "O cadastro está disponível para atualização. " + 
+                "Ao concluir, clique novamente em enviar.");
+        }
+    }
 
     aceitarTermo =  () => {
          this.setState({
@@ -102,6 +150,7 @@ class Cadastro extends Component {
                 uf: "",
                 cidade: "",
                 expectativa: "",
+                id: ""
             },
 
             erros: {
@@ -117,6 +166,7 @@ class Cadastro extends Component {
                 uf: [],
                 cidade: [],
                 expectativa: [],
+                id: []
             }
         })
     }
@@ -136,6 +186,23 @@ class Cadastro extends Component {
                 uf: [],
                 cidade: [],
                 expectativa: [],
+                id: []
+            }
+        });
+    }
+
+    apagarCadastro = (cpf) => {
+        this.resetErros();
+
+        CadastroApi.deleteCadastro(cpf).then( resp => {
+            this.mostrarModal("Exclusão", resp.data.message);
+            this.resetCadastro();
+        }).catch( (e) =>{
+            if (e.response && e.response.data && e.response.data.message) {
+                this.mostrarModal("Exclusão", e.response.data.message);
+            } else {
+                this.mostrarModal("Exclusão", "Ocorreu um erro ao fazer a operação.");
+                console.log(e);
             }
         });
     }
@@ -143,9 +210,19 @@ class Cadastro extends Component {
     cadastrar = () => {
         this.resetErros();
 
-        const result = CadastroApi.cadastrar(this.state.formCadastro)
-        .then( resp => {
-            this.mostrarModal("Cadastro", resp.data.message);
+        var tipo = null;
+        var processo = null;
+
+        if (this.state.id !== "") {
+            tipo = "Atualização";
+            processo = CadastroApi.atualizar(this.state.formCadastro);
+        } else {
+            tipo = "Cadastro";
+            processo = CadastroApi.cadastrar(this.state.formCadastro);
+        }
+
+        processo.then( resp => {
+            this.mostrarModal(tipo, resp.data.message);
             this.resetCadastro();
         })
         .catch( (e) =>{
@@ -258,9 +335,10 @@ class Cadastro extends Component {
                                 </div>
                             </div>
                             <div className="col-md-4 mb-3">
+                                <ModalConfirm ref={this.modalConfirmRef} />
                                 <label htmlFor="cadastroCpf">CPF:</label>
                                 <input name="cpf"
-                                    onChange={this.escutadorDeInputFormCadastro}
+                                    onChange={this.buscaCpf}
                                     value={this.state.formCadastro.cpf}
                                     type="text"
                                     className={"form-control" +  (this.state.erros.cpf.length > 0 ? " is-invalid"  : "")}
@@ -370,6 +448,8 @@ class Cadastro extends Component {
                                     checked={this.state.formCadastro.aceito}
                                     onChange={this.aceitarTermo} />
                                 <label className="form-check-label" htmlFor="cadastroDeAcordo">Estou de acordo com os termos</label>
+
+                                <input type="hidden" id="id" name="id" value={this.state.formCadastro.id} />
                             </div>
                             <div className="col-md-12 mb-3">
                                 <button id="btnSubmitCadastro" type="button" className="btn btn-primary" disabled={!this.state.formCadastro.aceito} onClick={this.cadastrar}>Enviar</button>
